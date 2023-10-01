@@ -1,0 +1,17 @@
+#!/bin/bash
+dir_movie="/srv/Movies"
+dir_series="/srv/TV"
+dir_torrent_movie="/usr/torrent/movie"
+dir_torrent_series="/usr/torrent/series"
+type=""
+fixed_title=""
+# loglevels (errors and warnings are always printed to stderr):
+# 1: ACCEPT (+new folders)
+# 2: REJECT
+# 3: IGNORE_EXISTING
+loglevel=2  # default: REJECT for series, IGNORE_EXISTING for movies
+
+# possible extensions to look for
+vid_ext=(mkv avi mp4 mov)
+art_ext=(jpeg jpg tbn png bmp)
+sub_ext=(srt sub idx)
