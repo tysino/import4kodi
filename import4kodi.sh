@@ -13,10 +13,11 @@ dir_torrent_series="/usr/torrent/series"
 type=""
 fixed_title=""
 # loglevels (errors and warnings are always printed to stderr):
-# 1: ACCEPT (+new folders)
-# 2: REJECT
-# 3: IGNORE_EXISTING
-loglevel=2  # default: REJECT for series, IGNORE_EXISTING for movies
+# 1: ACCEPT (+new folders) for series, REJECT for movies
+# 2: REJECT for series, IGNORE_EXISTING for movies
+# 3: IGNORE_EXISTING for series
+# 4: debug guess pipeline to stderr
+loglevel=2  # default
 
 # possible extensions to look for
 vid_ext=(mkv avi mp4 mov)
@@ -84,8 +85,9 @@ parse_args () {
         ;;
     esac
   done
+  linkmsglevel=$loglevel
   if [[ "$type" == "movie" ]]; then
-    loglevel=$(($loglevel + 1))
+    linkmsglevel=$(($linkmsglevel + 1))
   fi
   # remove processed options
   shift $((OPTIND-1))
@@ -118,9 +120,13 @@ guess_name () {
 
   # convert dots to spaces
   # e.g. The.Incredible.Hulk.2008.foo.bar --> The Incredible Hulk (2008)
-  local guess1=`echo "$path" | grep -oE "^.*\.${year_regex}\."`
-  guess1=`echo "$guess1" | sed -E "s/\.(${year_regex})\.$/ \(\1\)/g"`
+  local guess1=`echo "$path" | grep -oE "^.*\.${year_regex}(\.|$)"`
+  [ $loglevel -ge 4 ] && >&2 echo "--- guess 1 'The.Incredible.Hulk.2008.foo.bar' ---"
+  [ $loglevel -ge 4 ] && >&2 echo "$guess1"
+  guess1=`echo "$guess1" | sed -E "s/\.(${year_regex})\.?$/ \(\1\)/g"`
+  [ $loglevel -ge 4 ] && >&2 echo "$guess1"
   guess1=`echo "$guess1" | sed -E "s/\./ /g"`
+  [ $loglevel -ge 4 ] && >&2 echo "$guess1"
   if [ ! -z "$guess1" ]; then
     trim_str "$guess1"  #stdout
     return
@@ -128,8 +134,12 @@ guess_name () {
 
   # e.g. The.Incredible.Hulk.(2008).foo.bar --> The Incredible Hulk (2008)
   local guess2=`echo "$path" | grep -oE "^.*\.\(${year_regex}\)"`
+  [ $loglevel -ge 4 ] && >&2 echo "--- guess 2 'The.Incredible.Hulk.(2008).foo.bar' ---"
+  [ $loglevel -ge 4 ] && >&2 echo "$guess2"
   guess2=`echo "$guess2" | sed -E "s/\.\((${year_regex})\)$/ \(\1\)/g"`
+  [ $loglevel -ge 4 ] && >&2 echo "$guess2"
   guess2=`echo "$guess2" | sed -E "s/\./ /g"`
+  [ $loglevel -ge 4 ] && >&2 echo "$guess2"
   if [ ! -z "$guess2" ]; then
     trim_str "$guess2"  #stdout
     return
@@ -139,6 +149,8 @@ guess_name () {
 
   # e.g. The Incredible Hulk (2008) foo bar.baz something --> The Incredible Hulk (2008)
   local fallback=`echo "$path" | grep -oE "^.*\(${year_regex}\)"`
+  [ $loglevel -ge 4 ] && >&2 echo "--- fallback ---"
+  [ $loglevel -ge 4 ] && >&2 echo "$fallback"
   trim_str "$fallback"  # stdout
 }
 
@@ -174,13 +186,16 @@ guess_series_name () {
   # if guess is nonempty but folder does not exist,
   # try removing stuff in parantheses (except year) and check if series folder then exists
   if [ ! -z "$guess" ] && [ ! -d "$dir_series/$guess" ]; then
+    [ $loglevel -ge 4 ] && >&2 echo "--- folder '$guess' does not exist, trying to remove stuff in paranthesis ---"
     local year=`echo "$guess" | grep -oE "\(${year_regex}\)"`  # save year for later
     # The Office (US) (2006) --> The Office
     local guess2=`echo "$guess" | sed -E "s/\(.*\)//g"`  # remove everything in parantheses
+    local guess2=`trim_str "$guess2"`
     # The Office --> The Office (2006)
     guess2=`trim_str "${guess2} ${year}"`
+    [ $loglevel -ge 4 ] && >&2 echo "$guess2"
     # use new guess only when series folder exists
-    if [ -d "$dir_series/$guess2" ]; then
+    if [ ! -z "$guess2" ] && [ -d "$dir_series/$guess2" ]; then
       trim_str "$guess2"  # stdout
       return
     fi
@@ -308,22 +323,22 @@ import_series () {
       if [ ! -d "$dir_season" ] && ! array_contains folders_to_create "$dir_season"; then
         folders_to_create+=("$dir_season")
       fi
-      [ $loglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename_rel "${src_files[$i]}" "$dir_torrent") --> $(basename_rel "${tgt_files[$i]}" "$dir_current_series")\x1B[0m"
+      [ $linkmsglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename_rel "${src_files[$i]}" "$dir_torrent") --> $(basename_rel "${tgt_files[$i]}" "$dir_current_series")\x1B[0m"
     else
-      [ $loglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename_rel "${src_files[$i]}" "$dir_torrent") -/-> $(basename_rel "${tgt_files[$i]}" "$dir_current_series")\x1B[0m"
+      [ $linkmsglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename_rel "${src_files[$i]}" "$dir_torrent") -/-> $(basename_rel "${tgt_files[$i]}" "$dir_current_series")\x1B[0m"
     fi
   done
 
   # report rejected files
   while read -r file; do
     if ! array_contains src_files "$file"; then
-      [ $loglevel -ge 2 ] && echo -e "\x1B[31mREJECT: $(basename_rel "$file" "$dir_torrent")\x1B[0m"
+      [ $linkmsglevel -ge 2 ] && echo -e "\x1B[31mREJECT: $(basename_rel "$file" "$dir_torrent")\x1B[0m"
     fi
   done < <(find "$dir_torrent" -maxdepth 1 -type f)
 
 
   for dir in "${folders_to_create[@]}"; do
-    [ $loglevel -ge 1 ] && echo -e "\x1B[34mNEW_FOLDER '$dir' will be created\x1B[0m"
+    [ $linkmsglevel -ge 1 ] && echo -e "\x1B[34mNEW_FOLDER '$dir' will be created\x1B[0m"
   done
   if [ "${#src_files_checked[@]}" = 0 ]; then
     echo "Everything is up to date."
@@ -598,12 +613,12 @@ import_movie () {
       src_extras_checked+=("$extra")
       tgt_extras_checked+=("$new_tgt_extra")
       if [[ "$(basename "$extra")" == "$new_tgt_extra_name" ]]; then
-        [ $loglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "$extra") --> $(basename "$dir_extras")/\x1B[0m"
+        [ $linkmsglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "$extra") --> $(basename "$dir_extras")/\x1B[0m"
       else
-        [ $loglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "$extra") --> $(basename "$dir_extras")/$new_tgt_extra_name\x1B[0m"
+        [ $linkmsglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "$extra") --> $(basename "$dir_extras")/$new_tgt_extra_name\x1B[0m"
       fi
     else
-      [ $loglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename "$extra") -/-> $(basename_rel "$new_tgt_extra" "$dir_current_movie")\x1B[0m"
+      [ $linkmsglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename "$extra") -/-> $(basename_rel "$new_tgt_extra" "$dir_current_movie")\x1B[0m"
     fi
   done
   if ! [ -d "$dir_extras" ] && [[ ${#src_extras_checked[@]} -gt 0 ]]; then
@@ -615,9 +630,9 @@ import_movie () {
     if [ ! -f "$new_tgt_trailer" ]; then
       src_trailers_checked+=("${src_trailers[0]}")
       tgt_trailers_checked+=("$new_tgt_trailer")
-      [ $loglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "${src_trailers[0]}") --> $(basename_rel "$new_tgt_trailer" "$dir_current_movie")\x1B[0m"
+      [ $linkmsglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "${src_trailers[0]}") --> $(basename_rel "$new_tgt_trailer" "$dir_current_movie")\x1B[0m"
     else
-      [ $loglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename "${src_trailers[0]}") -/-> $(basename_rel "$new_tgt_trailer" "$dir_current_movie")\x1B[0m"
+      [ $linkmsglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename "${src_trailers[0]}") -/-> $(basename_rel "$new_tgt_trailer" "$dir_current_movie")\x1B[0m"
     fi
   else
     for (( i=0; i<${#src_trailers[@]}; i++ )); do
@@ -626,9 +641,9 @@ import_movie () {
       if [ ! -f "$new_tgt_trailer" ]; then
         src_trailers_checked+=("${src_trailers[$i]}")
         tgt_trailers_checked+=("$new_tgt_trailer")
-        [ $loglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "${src_trailers[$i]}") --> $(basename_rel "$new_tgt_trailer" "$dir_current_movie")\x1B[0m"
+        [ $linkmsglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "${src_trailers[$i]}") --> $(basename_rel "$new_tgt_trailer" "$dir_current_movie")\x1B[0m"
       else
-      [ $loglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename "${src_trailers[$i]}") -/-> $(basename_rel "$new_tgt_trailer" "$dir_current_movie")\x1B[0m"
+      [ $linkmsglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename "${src_trailers[$i]}") -/-> $(basename_rel "$new_tgt_trailer" "$dir_current_movie")\x1B[0m"
       fi
     done
   fi
@@ -638,9 +653,9 @@ import_movie () {
     if [ ! -f "$new_tgt_movie_file" ]; then
       src_movie_file_checked="$src_movie_file"
       tgt_movie_file_checked="$new_tgt_movie_file"
-      [ $loglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "$src_movie_file_checked") --> $(basename_rel "$tgt_movie_file_checked" "$dir_current_movie")\x1B[0m"
+      [ $linkmsglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "$src_movie_file_checked") --> $(basename_rel "$tgt_movie_file_checked" "$dir_current_movie")\x1B[0m"
     else
-      [ $loglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename "$src_movie_file") -/-> $(basename_rel "$new_tgt_movie_file" "$dir_current_movie")\x1B[0m"
+      [ $linkmsglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename "$src_movie_file") -/-> $(basename_rel "$new_tgt_movie_file" "$dir_current_movie")\x1B[0m"
     fi
   fi
   for key in "${!src_arts[@]}"; do
@@ -649,28 +664,28 @@ import_movie () {
     if [ ! -f "$new_tgt_art" ]; then
       src_arts_checked+=(["$key"]="${src_arts[$key]}")
       tgt_arts_checked+=(["$key"]="$new_tgt_art")
-      [ $loglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "${src_arts[$key]}") --> $(basename_rel "$new_tgt_art" "$dir_current_movie")\x1B[0m"
+      [ $linkmsglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "${src_arts[$key]}") --> $(basename_rel "$new_tgt_art" "$dir_current_movie")\x1B[0m"
     else
-      [ $loglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename "${src_arts[$key]}") -/-> $(basename_rel "$new_tgt_art" "$dir_current_movie")\x1B[0m"
+      [ $linkmsglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename "${src_arts[$key]}") -/-> $(basename_rel "$new_tgt_art" "$dir_current_movie")\x1B[0m"
     fi
   done
   for (( i=0; i<${#src_subs[@]}; i++ )); do
     if [ ! -f "${tgt_subs[$i]}" ]; then
       src_subs_checked+=("${src_subs[$i]}")
       tgt_subs_checked+=("${tgt_subs[$i]}")
-      [ $loglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "${src_subs[$i]}") --> $(basename_rel "${tgt_subs[$i]}" "$dir_current_movie")\x1B[0m"
+      [ $linkmsglevel -ge 1 ] && echo -e "\x1B[32mACCEPT: $(basename "${src_subs[$i]}") --> $(basename_rel "${tgt_subs[$i]}" "$dir_current_movie")\x1B[0m"
     else
-      [ $loglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename "${src_subs[$i]}") -/-> $(basename_rel "${tgt_subs[$i]}" "$dir_current_movie")\x1B[0m"
+      [ $linkmsglevel -ge 3 ] && echo -e "\x1B[33mIGNORE_EXISTING: $(basename "${src_subs[$i]}") -/-> $(basename_rel "${tgt_subs[$i]}" "$dir_current_movie")\x1B[0m"
     fi
   done
   for folder in "${folders_to_create[@]}"; do
-    [ $loglevel -ge 1 ] && echo -e "\x1B[34mNEW_FOLDER '$folder' will be created.\x1B[0m"
+    [ $linkmsglevel -ge 1 ] && echo -e "\x1B[34mNEW_FOLDER '$folder' will be created.\x1B[0m"
   done
 
   # report ignored files
   while read -r line; do
     if ! array_contains src_extras "$line" && ! array_contains src_trailers "$line" && ! [[ "$line" == "$src_movie_file" ]] && ! array_contains src_arts "$line" && ! array_contains src_subs "$line"; then
-      [ $loglevel -ge 2 ] && echo -e "\x1B[31mREJECT: $(basename "$line")\x1B[0m"
+      [ $linkmsglevel -ge 2 ] && echo -e "\x1B[31mREJECT: $(basename "$line")\x1B[0m"
     fi
   done < <(find "$dir_torrent" -maxdepth 1 -type f)
 
@@ -730,7 +745,7 @@ import_movie () {
 parse_args "$@"
 
 if ! [ -d "$dir_torrent" ]; then
-  >&2 echo "Directory not found: '$dir_torrent'"
+  >&2 echo "Source directory not found: '$dir_torrent'"
   exit 1
 fi
 torrentname_without_number="$(basename "$dir_torrent" | sed -E "s/^[0-9]+\.//g")"  # used by guess_*
@@ -738,10 +753,18 @@ torrentname_without_number="$(basename "$dir_torrent" | sed -E "s/^[0-9]+\.//g")
 case $type in
   series)
     tgt_dir="$dir_series"  # used by check_name()
+    if ! [ -d "$tgt_dir" ]; then
+      >&2 echo "Target directory not found: '$tgt_dir'"
+      exit 1
+    fi
     import_series
     ;;
   movie)
     tgt_dir="$dir_movie"  # used by check_name()
+    if ! [ -d "$tgt_dir" ]; then
+      >&2 echo "Target directory not found: '$tgt_dir'"
+      exit 1
+    fi
     import_movie
     ;;
 esac
