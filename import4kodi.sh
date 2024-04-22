@@ -189,7 +189,20 @@ guess_series_name () {
 }
 
 guess_season_number () {
-  echo $1 | grep -oE "S[0-9]+E[0-9]+" | sed -E "s/S([0-9]+).*$/\1/g" | sed "s/^0*//g"
+  # S01E003
+  local guess=`echo $1 | grep -oE "S[0-9]+E[0-9]+" | sed -E "s/S([0-9]+).*$/\1/g" | sed "s/^0*//g"`
+  if [[ "$guess" != "" ]]; then
+    echo "$guess"
+    return
+  fi
+  # 01x003
+  local guess=`echo $1 | grep -oE "[0-9]+x[0-9]+" | sed -E "s/([0-9]+)x.*$/\1/g" | sed "s/^0*//g"`
+  if [[ "$guess" != "" ]]; then
+    echo "$guess"
+    return
+  fi
+  # return season number 1 als fallback. using this we have to carefully check for the correctly parsed season number during import
+  echo "1"
 }
 
 check_name () {
