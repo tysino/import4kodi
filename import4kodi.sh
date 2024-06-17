@@ -310,7 +310,7 @@ import_series () {
     local season_number=`guess_season_number "$f"`
     local dir_season="$dir_current_series/Season $season_number"
     if [[ "$season_number" == "0" ]]; then
-        dir_season="Extra"
+        dir_season="$dir_current_series/Extra"
     fi
     tgt_files+=("$dir_season/$f")
   done
