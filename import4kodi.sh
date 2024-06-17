@@ -216,8 +216,8 @@ guess_season_number () {
     echo "$guess"
     return
   fi
-  # return season number 1 als fallback. using this we have to carefully check for the correctly parsed season number during import
-  echo "1"
+  # return season number 0 (extras) als fallback
+  echo "0"
 }
 
 check_name () {
@@ -309,6 +309,9 @@ import_series () {
     local f=`basename "$src_file"`
     local season_number=`guess_season_number "$f"`
     local dir_season="$dir_current_series/Season $season_number"
+    if [[ "$season_number" == "0" ]]; then
+        dir_season="Extra"
+    fi
     tgt_files+=("$dir_season/$f")
   done
 
