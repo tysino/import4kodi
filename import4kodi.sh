@@ -145,7 +145,16 @@ guess_name () {
     return
   fi
 
-  # todo: convert everything except digits, letters and parentheses to spaces
+  # convert everything except digits, letters and parentheses to spaces
+  local guess3=`echo "$path" | sed -E "s/[^0-9A-Za-z\(\)]/ /g"`
+  [ $loglevel -ge 4 ] && >&2 echo "--- guess 3 'The.Incredible.Hulk (2008) foo.bar' ---"
+  [ $loglevel -ge 4 ] && >&2 echo "$guess3"
+  guess3=`echo "$guess3" | sed -E "s/ (${year_regex})([^0-9]?)$/ \(\1\)\2/g"`
+  [ $loglevel -ge 4 ] && >&2 echo "$guess3"
+  if [ ! -z "$guess3" ]; then
+    trim_str "$guess3"  #stdout
+    return
+  fi
 
   # e.g. The Incredible Hulk (2008) foo bar.baz something --> The Incredible Hulk (2008)
   local fallback=`echo "$path" | grep -oE "^.*\(${year_regex}\)"`
@@ -205,13 +214,13 @@ guess_series_name () {
 
 guess_season_number () {
   # S01E003
-  local guess=`echo $1 | grep -oE "S[0-9]+E[0-9]+" | sed -E "s/S([0-9]+).*$/\1/g" | sed "s/^0*//g"`
+  local guess=`echo "$1" | grep -oE "S[0-9]+E[0-9]+" | sed -E "s/S([0-9]+).*$/\1/g" | sed "s/^0*//g"`
   if [[ "$guess" != "" ]]; then
     echo "$guess"
     return
   fi
   # 01x003
-  local guess=`echo $1 | grep -oE "[0-9]+x[0-9]+" | sed -E "s/([0-9]+)x.*$/\1/g" | sed "s/^0*//g"`
+  local guess=`echo "$1" | grep -oE "[0-9]+x[0-9]+" | sed -E "s/([0-9]+)x.*$/\1/g" | sed "s/^0*//g"`
   if [[ "$guess" != "" ]]; then
     echo "$guess"
     return
@@ -579,8 +588,10 @@ import_movie () {
   # if no match, link them with the same name as the movie filename (if only one subtitle of this kind exists)
   local -a src_subs=()
   local -a tgt_subs=()
-  local english_regex="(en|english)(forced)?$sub_ext_regex"
-  local german_regex="(de|german|deutsch)(forced)?$sub_ext_regex"
+  local english_regex="(en|english)(.forced)?$sub_ext_regex"
+  local german_regex="(de|german|deutsch)(.forced)?$sub_ext_regex"
+  local spanish_regex="(es|espanol|spanish)(.forced)?$sub_ext_regex"
+  local lang_regex="[a-z][a-z](.forced)?$sub_ext_regex"
   for file in "${src_sub_files[@]}"; do
     local filename=`basename "$file"`
     local ext=`get_sub_ext "$filename"`
@@ -590,7 +601,14 @@ import_movie () {
     elif echo "$filename" | grep -qiE "$german_regex"; then
       src_subs+=("$file")
       tgt_subs+=("$dir_current_movie/$name.German$ext")
-    elif ! array_contains tgt_subs "$dir_current_movie/$name.$ext"; then  # first encountered remaining file gets added, others not
+    elif echo "$filename" | grep -qiE "$spanish_regex"; then
+      src_subs+=("$file")
+      tgt_subs+=("$dir_current_movie/$name.Spanish$ext")
+    elif echo "$filename" | grep -qiE "$lang_regex"; then
+      local ext=.`echo "$filename" | grep -oiE "$lang_regex"`
+      src_subs+=("$file")
+      tgt_subs+=("$dir_current_movie/$name$ext")
+    elif ! array_contains tgt_subs "$dir_current_movie/$name$ext"; then  # first encountered remaining file gets added, others not
       src_subs+=("$file")
       tgt_subs+=("$dir_current_movie/$name$ext")
     fi
