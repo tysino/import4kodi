@@ -193,8 +193,8 @@ guess_series_name () {
   local guess=`guess_name "$1"`
 
   # if guess is nonempty but folder does not exist,
-  # try removing stuff in parantheses (except year) and check if series folder then exists
   if [ ! -z "$guess" ] && [ ! -d "$dir_series/$guess" ]; then
+    # try removing stuff in parantheses (except year) and check if series folder then exists
     [ $loglevel -ge 4 ] && >&2 echo "--- folder '$guess' does not exist, trying to remove stuff in paranthesis ---"
     local year=`echo "$guess" | grep -oE "\(${year_regex}\)"`  # save year for later
     # The Office (US) (2006) --> The Office
@@ -203,18 +203,44 @@ guess_series_name () {
     # The Office --> The Office (2006)
     guess2=`trim_str "${guess2} ${year}"`
     [ $loglevel -ge 4 ] && >&2 echo "$guess2"
-    # use new guess only when series folder exists
-    if [ ! -z "$guess2" ] && [ -d "$dir_series/$guess2" ]; then
-      trim_str "$guess2"  # stdout
+    if [ ! -z "$guess2" ]; then
+      # use new guess only when series folder exists
+      if [ -d "$dir_series/$guess2" ]; then
+        trim_str "$guess2"  # stdout
+        return
+      fi
+      [ $loglevel -ge 4 ] && >&2 echo "--- folder '$guess2' does not exist, trying to remove season number from previous guess ---"
+      # Rick and Morty S01 x264 --> Rick and Morty
+      local guess3=`echo "$guess2" | grep -oPi "^.*(?=s[0-9]+)"`
+      local guess3=`trim_str "$guess3"`
+      [ $loglevel -ge 4 ] && >&2 echo "$guess3"
+      if [ ! -z "$guess3" ] && [ -d "$dir_series/$guess3" ]; then
+        trim_str "$guess3"  # stdout
+        return
+      fi
+    fi
+    [ $loglevel -ge 4 ] && >&2 echo "--- trying to remove season number from original guess---"
+    # Rick and Morty S01 x264 --> Rick and Morty
+    guess4=`echo "$guess" | grep -oPi "^.*(?=s[0-9]+)"`
+    local guess4=`trim_str "$guess4"`
+    [ $loglevel -ge 4 ] && >&2 echo "$guess4"
+    if [ ! -z "$guess4" ] && [ -d "$dir_series/$guess4" ]; then
+      trim_str "$guess4"  # stdout
       return
     fi
   fi
-  trim_str "$guess"  # stdout
+  trim_str "$guess" # stdout
 }
 
 guess_season_number () {
   # S01E003
   local guess=`echo "$1" | grep -oE "S[0-9]+E[0-9]+" | sed -E "s/S([0-9]+).*$/\1/g" | sed "s/^0*//g"`
+  if [[ "$guess" != "" ]]; then
+    echo "$guess"
+    return
+  fi
+  # s01e003
+  local guess=`echo "$1" | grep -oE "s[0-9]+e[0-9]+" | sed -E "s/s([0-9]+).*$/\1/g" | sed "s/^0*//g"`
   if [[ "$guess" != "" ]]; then
     echo "$guess"
     return
